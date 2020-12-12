@@ -1,0 +1,11 @@
+name: redshift_dwh
+channels:
+  - defaults
+dependencies:
+  - pandas
+  - psycopg2
+  - jupyter
+  - sqlalchemy
+  - pip
+  - pip:
+    - sqlalchemy-redshift
