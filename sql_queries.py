@@ -2,13 +2,12 @@ from sqlalchemy import create_engine, engine
 
 
 def get_connection(redshift_cfg: dict) -> engine:
-    print(redshift_cfg)
     uri = "redshift+psycopg2://{user}:{passwd}@{host}:{port}/{db}".format(**redshift_cfg)
     return create_engine(uri)
 
 
 # DROP TABLES
-staging_events_table_drop = "DROP TABLE IF EXISTS taging_events;"
+staging_events_table_drop = "DROP TABLE IF EXISTS staging_events;"
 staging_songs_table_drop = "DROP TABLE IF EXISTS staging_songs;"
 songplay_table_drop = "DROP TABLE IF EXISTS songplays;"
 user_table_drop = "DROP TABLE IF EXISTS users;"
@@ -28,7 +27,7 @@ CREATE TABLE staging_events (
 """
 
 staging_songs_table_create = """
-CREATE TABLE songs (
+CREATE TABLE staging_songs (
     "song_id" varchar NOT NULL,
     "title" varchar NOT NULL,
     "artist_id" varchar NOT NULL,
@@ -39,7 +38,7 @@ CREATE TABLE songs (
 
 songplay_table_create = """
 CREATE TABLE songplays (
-    "songplay_id" IDENTITY(0,1) NOT NULL,
+    "songplay_id" bigint IDENTITY(0,1) NOT NULL,
     "start_time" timestamp NOT NULL,
     "user_id" int NOT NULL,
     "level" varchar NOT NULL,
@@ -104,9 +103,15 @@ CREATE TABLE "time" (
 # STAGING TABLES
 
 staging_events_copy = """
+COPY staging_events FROM {bucket_url}
+CREDENTIALS 'aws_iam_role={iam_role}'
+GZIP DELIMITER ';' COMPUPDATE OFF REGION '{aws_region}';
 """
 
 staging_songs_copy = """
+COPY songs FROM {bucket_url}
+CREDENTIALS 'aws_iam_role={iam_role}'
+GZIP DELIMITER ';' COMPUPDATE OFF REGION '{aws_region}';
 """
 
 # FINAL TABLES
@@ -151,11 +156,11 @@ ON CONFLICT (start_time) DO NOTHING;
 create_table_queries = [
     staging_events_table_create,
     staging_songs_table_create,
-    songplay_table_create,
     user_table_create,
     song_table_create,
     artist_table_create,
     time_table_create,
+    songplay_table_create,
 ]
 drop_table_queries = [
     staging_events_table_drop,
@@ -168,9 +173,9 @@ drop_table_queries = [
 ]
 copy_table_queries = [staging_events_copy, staging_songs_copy]
 insert_table_queries = [
-    songplay_table_insert,
     user_table_insert,
     song_table_insert,
     artist_table_insert,
     time_table_insert,
+    songplay_table_insert,
 ]
