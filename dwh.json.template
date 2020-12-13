@@ -6,6 +6,7 @@
         "passwd": "",
         "port": 5439
     },
+    "aws_region": "",
     "iam_role": {
         "arn": ""
     },
