@@ -1,9 +1,17 @@
-from sqlalchemy import create_engine, engine
+from typing import Iterable
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine.base import Connection, Engine
 
 
-def get_connection(redshift_cfg: dict) -> engine:
+def get_engine(redshift_cfg: dict) -> Engine:
     uri = "redshift+psycopg2://{user}:{passwd}@{host}:{port}/{db}".format(**redshift_cfg)
-    return create_engine(uri)
+    return create_engine(uri, echo=True, isolation_level="AUTOCOMMIT")
+
+
+def run_queries(con: Connection, queries: Iterable):
+    for statment in queries:
+        con.execute(statment)
 
 
 # DROP TABLES
@@ -19,20 +27,39 @@ time_table_drop = "DROP TABLE IF EXISTS time;"
 
 staging_events_table_create = """
 CREATE TABLE staging_events (
-    "songplay_id" int NOT NULL,
-    "start_time" timestamp NOT NULL,
-    "user_id" int NOT NULL,
-    "level" varchar NOT NULL
+    "artist" varchar NULL,
+    "auth" varchar NULL,
+    "firstName" varchar NULL,
+    "gender" varchar NULL,
+    "itemInSession" int NULL,
+    "lastName" varchar NULL,
+    "lengh" varchar NULL,
+    "level" varchar NULL,
+    "location" varchar NULL,
+    "method" varchar NULL,
+    "page" varchar NULL,
+    "registration" float NULL,
+    "sessionId" varchar NULL,
+    "song" varchar NULL,
+    "status" int NULL,
+    "ts" bigint NULL,
+    "userAgent" varchar NULL,
+    "userId" varchar NULL
 );
 """
 
 staging_songs_table_create = """
 CREATE TABLE staging_songs (
-    "song_id" varchar NOT NULL,
-    "title" varchar NOT NULL,
-    "artist_id" varchar NOT NULL,
-    "year" int NOT NULL,
-    "duration" float NOT NULL
+    "num_songs" int NULL,
+    "artist_id" varchar NULL,
+    "artist_latitude" varchar NULL,
+    "artist_longitude" varchar NULL,
+    "artist_location" varchar NULL,
+    "artist_name" varchar NULL,
+    "song_id" varchar NULL,
+    "title" varchar NULL,
+    "year" int NULL,
+    "duration" float NULL
 );
 """
 
@@ -102,16 +129,11 @@ CREATE TABLE "time" (
 
 # STAGING TABLES
 
-staging_events_copy = """
-COPY staging_events FROM {bucket_url}
-CREDENTIALS 'aws_iam_role={iam_role}'
-GZIP DELIMITER ';' COMPUPDATE OFF REGION '{aws_region}';
-"""
-
-staging_songs_copy = """
-COPY songs FROM {bucket_url}
-CREDENTIALS 'aws_iam_role={iam_role}'
-GZIP DELIMITER ';' COMPUPDATE OFF REGION '{aws_region}';
+staging_copy = """
+COPY {table} FROM '{bucket_url}'
+iam_role '{iam_role}'
+json '{jsonpath}'
+REGION 'us-west-2';
 """
 
 # FINAL TABLES
@@ -124,9 +146,14 @@ VALUES(%s, %s, %s, %s, %s, %s, %s, %s)
 
 user_table_insert = """
 INSERT INTO users
-("user_id", "first_name", "last_name", "gender", "level")
-VALUES(%s, %s, %s, %s, %s)
-ON CONFLICT (user_id) DO UPDATE SET level=EXCLUDED.level;
+SELECT cast("userId" as integer),
+       max("firstName"),
+       max("lastName"),
+       max("gender"),
+       max("level")
+FROM staging_events
+WHERE auth	!= 'Logged Out'
+GROUP BY userid;
 """
 
 song_table_insert = """
@@ -171,7 +198,6 @@ drop_table_queries = [
     artist_table_drop,
     time_table_drop,
 ]
-copy_table_queries = [staging_events_copy, staging_songs_copy]
 insert_table_queries = [
     user_table_insert,
     song_table_insert,
