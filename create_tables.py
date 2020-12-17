@@ -1,25 +1,14 @@
-import configparser
-import psycopg2
 from json import loads
-from sql_queries import get_connection, create_table_queries, drop_table_queries
 
-
-def drop_tables(cur):
-    for query in drop_table_queries:
-        cur.execute(query)
-
-
-def create_tables(cur):
-    for query in create_table_queries:
-        cur.execute(query)
-
+from sql_queries import create_table_queries, drop_table_queries, get_engine, run_queries
 
 if __name__ == "__main__":
     with open("dwh.json") as cf:
         config = loads(cf.read())
 
-    conn = get_connection(config["redshift"])
+    eng = get_engine(config["redshift"])
 
-    with conn.connect() as cur:
-        drop_tables(cur)
-        create_tables(cur)
+    # Using connect to keep everything in one transaction
+    with eng.connect() as con:
+        run_queries(con, drop_table_queries)
+        run_queries(con, create_table_queries)
