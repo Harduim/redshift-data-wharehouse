@@ -1,17 +1,38 @@
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from json import loads
 from typing import Iterable
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine.base import Connection, Engine
+from sqlalchemy.engine.base import Engine
+from sqlalchemy.pool import NullPool
 
 
-def get_engine(redshift_cfg: dict) -> Engine:
-    uri = "redshift+psycopg2://{user}:{passwd}@{host}:{port}/{db}".format(**redshift_cfg)
-    return create_engine(uri, echo=True, isolation_level="AUTOCOMMIT")
+with open("dwh.json") as cf:
+    CONFIG = loads(cf.read())
 
 
-def run_queries(con: Connection, queries: Iterable):
-    for statment in queries:
-        con.execute(statment)
+def get_engine() -> Engine:
+    uri = "redshift+psycopg2://{user}:{passwd}@{host}:{port}/{db}".format(**CONFIG["redshift"])
+    return create_engine(uri, echo=False, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+
+
+def run_query(query: str):
+    eng = get_engine()
+    eng.execute(query)
+    return f"Completed: {query}"
+
+
+def run_queries_sequential(queries: Iterable[str]):
+    for query in queries:
+        run_query(query)
+        print(f"Completed: {query}")
+
+
+def run_queries_parallel(queries: Iterable[str]):
+    with ProcessPoolExecutor(max_workers=4) as exec:
+        query_futures = [exec.submit(run_query, query) for query in queries]
+        for copy in as_completed(query_futures):
+            print(copy.result())
 
 
 # DROP TABLES
@@ -66,18 +87,17 @@ CREATE TABLE staging_songs (
 songplay_table_create = """
 CREATE TABLE songplays (
     "songplay_id" bigint IDENTITY(0,1) NOT NULL,
-    "start_time" timestamp NOT NULL,
-    "user_id" int NOT NULL,
-    "level" varchar NOT NULL,
+    "start_time" timestamp NULL,
+    "user_id" int NULL,
+    "level" varchar NULL,
     "song_id" varchar NULL,
     "artist_id" varchar NULL,
-    "session_id" int NOT NULL,
-    "location" text NOT NULL,
-    "user_agent" text NOT NULL,
+    "session_id" int NULL,
+    "location" text NULL,
+    "user_agent" text NULL,
     CONSTRAINT songplays_pkey PRIMARY KEY (songplay_id),
     CONSTRAINT songplays_un UNIQUE (start_time, user_id, song_id),
-    CONSTRAINT songplays_fk_2 FOREIGN KEY (user_id) REFERENCES users(user_id),
-    CONSTRAINT songplays_fk_3 FOREIGN KEY (start_time) REFERENCES "time"(start_time)
+    CONSTRAINT songplays_fk_2 FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 """
 
@@ -129,10 +149,17 @@ CREATE TABLE "time" (
 
 # STAGING TABLES
 
-staging_copy = """
-COPY {table} FROM '{bucket_url}'
-iam_role '{iam_role}'
-json '{jsonpath}'
+events_copy = f"""
+COPY staging_events FROM '{CONFIG["s3"]["log_data"]}'
+iam_role '{CONFIG["iam_role"]}'
+json '{CONFIG["s3"]["log_jsonpath"]}'
+REGION 'us-west-2';
+"""
+
+songs_copy = f"""
+COPY staging_songs FROM '{CONFIG["s3"]["song_data"]}'
+iam_role '{CONFIG["iam_role"]}'
+json 'auto'
 REGION 'us-west-2';
 """
 
@@ -140,8 +167,22 @@ REGION 'us-west-2';
 
 songplay_table_insert = """
 INSERT INTO songplays
-("start_time", "user_id", "level", "song_id", "artist_id", "session_id", "location", "user_agent")
-VALUES(%s, %s, %s, %s, %s, %s, %s, %s)
+(start_time, user_id, "level", song_id, artist_id, session_id, location, user_agent)
+SELECT TIMESTAMP 'epoch' + "ts"/1000 * INTERVAL '1 second',
+        CAST("userid" as int) as user_id,
+        "level",
+        (
+            SELECT song_id
+            FROM songs
+            INNER JOIN artists on songs.artist_id = artists.artist_id
+            WHERE title = song and artist = artists."name"
+        ),
+        (SELECT artist_id FROM artists WHERE artist = artists."name"),
+        CAST(sessionid AS INT),
+        location,
+        useragent
+FROM staging_events as se
+WHERE auth != 'Logged Out'
 """
 
 user_table_insert = """
@@ -152,34 +193,44 @@ SELECT cast("userId" as integer),
        max("gender"),
        max("level")
 FROM staging_events
-WHERE auth	!= 'Logged Out'
+WHERE auth != 'Logged Out'
 GROUP BY userid;
 """
 
 song_table_insert = """
 INSERT INTO songs
-("song_id", "title", "artist_id", "year", "duration")
-VALUES(%s, %s, %s, %s, %s)
-ON CONFLICT (song_id) DO NOTHING;
+SELECT "song_id",
+        "title",
+        "artist_id",
+        "year",
+        "duration"
+FROM staging_songs;
 """
 
 artist_table_insert = """
 INSERT INTO artists
-("artist_id", "name", "location", "latitude", "longitude")
-VALUES(%s, %s, %s, %s, %s)
-ON CONFLICT (artist_id) DO NOTHING;
+SELECT "artist_id",
+        MAX("artist_name"),
+        MAX("artist_location"),
+        CAST(MAX("artist_latitude") as float),
+        CAST(MAX("artist_longitude") as float)
+FROM staging_songs
+GROUP BY "artist_id"
 """
 
-
 time_table_insert = """
-INSERT INTO "time"
-("start_time", "hour", "day", "week", "month", "year", "weekday")
-VALUES(%s, %s, %s, %s, %s, %s, %s)
-ON CONFLICT (start_time) DO NOTHING;
+INSERT INTO time
+SELECT start_time,
+        DATE_PART(HOUR, start_time),
+        DATE_PART(DAY, start_time),
+        DATE_PART(WEEK , start_time),
+        DATE_PART(MONTH, start_time),
+        DATE_PART(YEAR, start_time),
+        DATE_PART(WEEKDAY, start_time)
+FROM songplays
 """
 
 # QUERY LISTS
-
 create_table_queries = [
     staging_events_table_create,
     staging_songs_table_create,
@@ -198,10 +249,9 @@ drop_table_queries = [
     artist_table_drop,
     time_table_drop,
 ]
-insert_table_queries = [
+insert_dim_table_queries = [
     user_table_insert,
     song_table_insert,
     artist_table_insert,
-    time_table_insert,
-    songplay_table_insert,
 ]
+staging_copy_queries = [events_copy, songs_copy]
