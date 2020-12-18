@@ -133,7 +133,7 @@ CREATE TABLE users (
     "gender" char NULL,
     "level" varchar NULL,
     CONSTRAINT users_pk PRIMARY KEY (user_id)
-) diststyle all;
+) DISTSTYLE ALL;
 """
 
 song_table_create = """
@@ -144,7 +144,7 @@ CREATE TABLE songs (
     "year" int NOT NULL,
     "duration" float NOT NULL,
     CONSTRAINT songs_pk PRIMARY KEY (song_id)
-) diststyle all;
+) DISTSTYLE ALL;
 """
 
 artist_table_create = """
@@ -191,12 +191,12 @@ songplay_table_insert = """
 INSERT INTO songplays
 (start_time, user_id, "level", song_id, artist_id, session_id, location, user_agent)
 SELECT TIMESTAMP 'epoch' + ts/1000 * INTERVAL '1 second',
-        user_id,
+        userid,
         "level",
         songs.song_id,
         artists.artist_id,
         sessionid,
-        location,
+        staging_events.location,
         useragent
 FROM staging_events
 INNER JOIN artists on artists.name = staging_events.artist
