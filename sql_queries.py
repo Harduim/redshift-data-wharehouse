@@ -12,30 +12,53 @@ with open("dwh.json") as cf:
 
 
 def get_engine() -> Engine:
+    """Provides an sqlalchemy engine.
+
+    Returns:
+        Engine
+    """
     uri = "redshift+psycopg2://{user}:{passwd}@{host}:{port}/{db}".format(**CONFIG["redshift"])
     return create_engine(uri, echo=False, poolclass=NullPool, isolation_level="AUTOCOMMIT")
 
 
-def run_query(query: str):
+def run_query(query: str) -> str:
+    """Runs a single query
+
+    Args:
+        query (str): Text of the query to run
+
+    Returns:
+        str: Returns the query text so que parallel runner can print it
+    """
     eng = get_engine()
     eng.execute(query)
     return f"Completed: {query}"
 
 
 def run_queries_sequential(queries: Iterable[str]):
+    """Run queries in sequence
+
+    Args:
+        queries (Iterable[str]): A sequence of queries to run
+    """
     for query in queries:
         run_query(query)
         print(f"Completed: {query}")
 
 
 def run_queries_parallel(queries: Iterable[str]):
+    """Run queries in parallel
+
+    Args:
+        queries (Iterable[str]):  A sequence of queries to run
+    """
     with ProcessPoolExecutor(max_workers=4) as exec:
         query_futures = [exec.submit(run_query, query) for query in queries]
         for copy in as_completed(query_futures):
             print(copy.result())
 
 
-# DROP TABLES
+# DROP TABLE STATEMENTS
 staging_events_table_drop = "DROP TABLE IF EXISTS staging_events;"
 staging_songs_table_drop = "DROP TABLE IF EXISTS staging_songs;"
 songplay_table_drop = "DROP TABLE IF EXISTS songplays;"
@@ -44,8 +67,7 @@ song_table_drop = "DROP TABLE IF EXISTS songs;"
 artist_table_drop = "DROP TABLE IF EXISTS artists;"
 time_table_drop = "DROP TABLE IF EXISTS time;"
 
-# CREATE TABLES
-
+# CREATE TABLE STATEMENTS
 staging_events_table_create = """
 CREATE TABLE staging_events (
     "artist" varchar NULL,
@@ -147,8 +169,7 @@ CREATE TABLE "time" (
 );
 """
 
-# STAGING TABLES
-
+# STAGING TABLE COPY STATEMENTS
 events_copy = f"""
 COPY staging_events FROM '{CONFIG["s3"]["log_data"]}'
 iam_role '{CONFIG["iam_role"]}'
@@ -163,8 +184,7 @@ json 'auto'
 REGION 'us-west-2';
 """
 
-# FINAL TABLES
-
+# FINAL TABLES INSERT STATEMENTS
 songplay_table_insert = """
 INSERT INTO songplays
 (start_time, user_id, "level", song_id, artist_id, session_id, location, user_agent)
