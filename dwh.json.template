@@ -1,18 +1,16 @@
 {
     "redshift": {
-        "host": "",
-        "db": "",
-        "user": "",
-        "passwd": "",
-        "port": 5439
+        "host": "xxxxxxxxxx.redshift.amazonaws.com",
+        "db": "xxxx",
+        "user": "xxxx",
+        "passwd": "xxxxxxxxxx",
+        "port": 87654
     },
-    "aws_region": "",
-    "iam_role": {
-        "arn": ""
-    },
+    "aws_region": "xxxxx",
+    "iam_role": "xxxxx",
     "s3": {
-        "log_data": "s3://udacity-dend/log-data",
         "log_jsonpath": "s3://udacity-dend/log_json_path.json",
-        "song_data": "s3://udacity-dend/song-data"
+        "log_data": "s3://udacity-dend/log_data",
+        "song_data": "s3://udacity-dend/song_data"
     }
 }
