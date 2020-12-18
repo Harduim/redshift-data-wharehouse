@@ -65,7 +65,10 @@ Using the star schema because the main focus is analytics, although I can't how 
 - Create the tables: `python3 create_tables.py`
 
 ## ETL
-**Warning!** Because of the dataset size the process will take hours, so if you have access to an Linux environment I recomend runnig it under [Screen](https://linuxize.com/post/how-to-use-linux-screen/) or [Tmux](https://github.com/tmux/tmux/wiki).
+**Warning!** Because of the dataset size the initial data import (FROM S3 to Redshift) from  will take hours, so if you have access to an Linux environment I recomend runnig it under [Screen](https://linuxize.com/post/how-to-use-linux-screen/) or [Tmux](https://github.com/tmux/tmux/wiki).
+
+![data_ingest](initial_load.png)
+
 
 If you dont have the time or just want to check if everything works, change the **song_data** value on the config file from **s3://udacity-dend/song_dat"** to **s3://udacity-dend/song_data/A/A/A**
 
